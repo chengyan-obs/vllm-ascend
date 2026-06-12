@@ -32,11 +32,7 @@ class XliteModelRunner(NPUModelRunner):
 
         self.model = XliteWrapper(self.model, self.vllm_config)
 
-    def initialize_kv_cache(
-        self,
-        kv_cache_config: KVCacheConfig,
-        is_profiling: bool = False,
-    ) -> None:
+    def initialize_kv_cache(self, kv_cache_config: KVCacheConfig) -> None:
         super().initialize_kv_cache(kv_cache_config)
         self.model.register_kv_caches(self.kv_caches)
 

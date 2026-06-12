@@ -26,7 +26,7 @@ _CONDITIONS = ("seq7168",)
         "IS_VARLEN": lambda args: args["cu_seqlens"] is not None,
     }
 )
-@triton.jit(do_not_specialize=["T", "H", "Hg", "K", "V"])
+@triton.jit(do_not_specialize=["T"])
 def chunk_gated_delta_rule_fwd_kernel_h_blockdim64(
     k,
     v,
@@ -40,10 +40,10 @@ def chunk_gated_delta_rule_fwd_kernel_h_blockdim64(
     chunk_offsets,
     h_update,
     T,
-    H,
-    Hg,
-    K,
-    V,
+    H: tl.constexpr,
+    Hg: tl.constexpr,
+    K: tl.constexpr,
+    V: tl.constexpr,
     BT: tl.constexpr,
     USE_G: tl.constexpr,
     USE_INITIAL_STATE: tl.constexpr,

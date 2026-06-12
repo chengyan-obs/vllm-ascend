@@ -39,7 +39,7 @@ else:
         "IS_SPEC_DECODING": lambda args: args["num_accepted_tokens"] is not None,
     }
 )
-@triton.jit(do_not_specialize=["scale", "N", "T", "B"])
+@triton.jit(do_not_specialize=["N", "T"])
 def fused_recurrent_gated_delta_rule_fwd_kernel(
     q,
     k,
@@ -53,9 +53,9 @@ def fused_recurrent_gated_delta_rule_fwd_kernel(
     ssm_state_indices,
     num_accepted_tokens,
     scale,
-    N,  # num of sequences
-    T,  # num of tokens
-    B,
+    N: tl.constexpr,  # num of sequences
+    T: tl.constexpr,  # num of tokens
+    B: tl.constexpr,
     H: tl.constexpr,
     HV: tl.constexpr,
     K: tl.constexpr,
@@ -243,9 +243,13 @@ def fused_sigmoid_gating_delta_rule_update_kernel(
     b_h = tl.zeros([BK, BV], dtype=tl.float32)
     if USE_INITIAL_STATE:
         idx = tl.load(h0_indices + i_n)
-        if idx >= 0:
-            p_h0 = h0_source + idx * HV * K * V + i_hv * K * V + o_k[:, None] * V + o_v[None, :]
-            b_h += tl.load(p_h0, mask=mask_h, other=0).to(tl.float32)
+        # if idx >= 0:
+        tmp0 = tl.where(idx < 0, 0, idx)
+        p_h0 = h0_source + tmp0 * HV * K * V + i_hv * K * V + o_k[:, None] * V + o_v[None, :]
+        temp1 = tl.load(p_h0, mask=mask_h, other=0).to(tl.float32)
+        temp2 = tl.zeros_like(temp1)
+        value0 = tl.where(idx < 0, temp2, temp1)
+        b_h += value0  # tl.load(p_h0, mask=mask_h, other=0).to(tl.float32)
 
     for i in range(0, T):
         # Load inputs

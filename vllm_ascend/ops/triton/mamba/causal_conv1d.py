@@ -13,18 +13,8 @@ import torch
 import torch.nn.functional as F
 from vllm.distributed import get_pcp_group
 from vllm.forward_context import get_forward_context
-from vllm.logger import logger
-from vllm.triton_utils import HAS_TRITON, tl, triton
+from vllm.triton_utils import tl, triton
 from vllm.v1.attention.backends.utils import PAD_SLOT_ID  # type: ignore
-
-from vllm_ascend.ops.triton.triton_utils import get_vectorcore_num
-
-if not HAS_TRITON:
-    from vllm_ascend._310p.ops.causal_conv1d import (
-        causal_conv1d_update as _pytorch_update,
-    )
-else:
-    _pytorch_update = None
 
 
 def causal_conv1d_ref(
@@ -45,8 +35,7 @@ def causal_conv1d_ref(
     out: (batch, dim, seqlen)
     """
     if activation not in [None, "silu", "swish"]:
-        logger.error("[TritonOps] activation must be None, silu, or swish, got activation=%s.", activation)
-        raise NotImplementedError("activation must be None, silu, or swish, got activation=%s.", activation)
+        raise NotImplementedError("activation must be None, silu, or swish")
     dtype_in = x.dtype
     x = x.to(weight.dtype)
     seqlen = x.shape[-1]
@@ -117,8 +106,7 @@ def causal_conv1d_fn(
         num_decodes = attn_metadata.num_decodes
 
     if activation not in [None, "silu", "swish"]:
-        logger.error("[TritonOps] activation must be None, silu, or swish, got activation=%s.", activation)
-        raise NotImplementedError("[TritonOps] activation must be None, silu, or swish, got activation=%s.", activation)
+        raise NotImplementedError("activation must be None, silu, or swish")
     if x.stride(-1) != 1:
         x = x.contiguous()
     bias = bias.contiguous() if bias is not None else None
@@ -129,14 +117,13 @@ def causal_conv1d_fn(
     seqlens = seqlens.tolist()
     splits = torch.split(x, seqlens, dim=-1)
     width = weight.shape[1]
-    state_len = width - 1
-    last_width_prefill_x = extract_last_width(x, query_start_loc[num_decodes:], state_len)
+    last_width_prefill_x = extract_last_width(x, query_start_loc[num_decodes:], conv_states.shape[-1])
 
     if get_pcp_group().world_size > 1:
         all_last_width_prefill_x = get_pcp_group().all_gather(last_width_prefill_x.unsqueeze(0).contiguous(), 0)
         pcp_rank = get_pcp_group().rank_in_group
         if pcp_rank > 0:
-            conv_states[cache_indices[num_decodes:], :, :state_len] = all_last_width_prefill_x[pcp_rank - 1, ...]
+            conv_states[cache_indices[num_decodes:]] = all_last_width_prefill_x[pcp_rank - 1, ...]
 
     for i in range(len(seqlens)):
         x_s = splits[i]
@@ -155,7 +142,7 @@ def causal_conv1d_fn(
         )
 
     if get_pcp_group().world_size > 1:
-        conv_states[cache_indices[num_decodes:], :, :state_len] = all_last_width_prefill_x[-1, ...]
+        conv_states[cache_indices[num_decodes:]] = all_last_width_prefill_x[-1, ...]
     out_ref.append(torch.cat([t[0] for t in out_ref_b], dim=-1))
     out_ref_tensor = torch.cat(out_ref, dim=0)
     return out_ref_tensor
@@ -169,19 +156,7 @@ def extract_last_width(x, start_loc, width):
     return x[:, indices].permute(1, 0, 2)
 
 
-@triton.jit(
-    do_not_specialize=[
-        "batch",
-        "state_len",
-        "num_cache_lines",
-        "stride_x_seq",
-        "stride_x_token",
-        "stride_conv_state_seq",
-        "stride_state_indices",
-        "stride_o_seq",
-        "stride_o_token",
-    ]
-)
+@triton.jit
 def _causal_conv1d_update_kernel_npu_tiled(
     # Pointers
     x_ptr,  # (batch, dim, seqlen) OR (num_tokens, dim) for varlen
@@ -197,21 +172,21 @@ def _causal_conv1d_update_kernel_npu_tiled(
     batch: tl.int32,
     dim: tl.constexpr,
     seqlen: tl.constexpr,  # max seqlen for varlen, or exact seqlen
-    state_len,  # effective state_len computed in wrapper
-    num_cache_lines,
+    state_len: tl.constexpr,  # effective state_len computed in wrapper
+    num_cache_lines: tl.constexpr,
     # Strides
-    stride_x_seq,
+    stride_x_seq: tl.constexpr,
     stride_x_dim: tl.constexpr,
-    stride_x_token,
+    stride_x_token: tl.constexpr,
     stride_w_dim: tl.constexpr,
     stride_w_width: tl.constexpr,
-    stride_conv_state_seq,
+    stride_conv_state_seq: tl.constexpr,
     stride_conv_state_dim: tl.constexpr,
     stride_conv_state_tok: tl.constexpr,
-    stride_state_indices,
-    stride_o_seq,
+    stride_state_indices: tl.constexpr,
+    stride_o_seq: tl.constexpr,
     stride_o_dim: tl.constexpr,
-    stride_o_token,
+    stride_o_token: tl.constexpr,
     # others
     pad_slot_id: tl.constexpr,
     # Meta
@@ -590,26 +565,6 @@ def causal_conv1d_update_npu(
             indices 0 and 3
     out: (batch, dim) or (batch, dim, seqlen) or (num_tokens, dim), same shape as `x`
     """
-    logger.debug(
-        "[TritonOps] causal_conv1d_update_npu: x.shape=%s, conv_state.shape=%s, weight.shape=%s, activation=%s",
-        x.shape,
-        conv_state.shape,
-        weight.shape,
-        activation,
-    )
-    if not HAS_TRITON:
-        return _pytorch_update(
-            x,
-            conv_state,
-            weight,
-            bias,
-            activation,
-            conv_state_indices=conv_state_indices,
-            num_accepted_tokens=num_accepted_tokens,
-            query_start_loc=query_start_loc,
-            pad_slot_id=pad_slot_id,
-        )
-
     weight = weight.transpose(0, 1).contiguous()
     conv_state = conv_state.transpose(1, 2).contiguous()
     if validate_data:
@@ -665,7 +620,7 @@ def causal_conv1d_update_npu(
     # keep program count around ~[80..160]
     # vector core 40
     # TODO: use driver to get the vector core num
-    CORE_HINT = get_vectorcore_num()
+    CORE_HINT = 40
     # channel tile: 512 when dim large (reduce tasks), else 256
     block_n = 512 if dim >= 512 else 256
     g = triton.cdiv(dim, block_n)

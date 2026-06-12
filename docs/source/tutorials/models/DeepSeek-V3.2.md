@@ -16,8 +16,10 @@ Refer to [feature guide](../../user_guide/feature_guide/index.md) to get the fea
 
 ### Model Weight
 
-- `DeepSeek-V3.2-Exp-W8A8` (Quantized version): requires **1 Atlas 800 A3 (64G × 16) node** or **2 Atlas 800 A2 (64G × 8) nodes**. [Download model weight](https://www.modelscope.cn/models/vllm-ascend/DeepSeek-V3.2-Exp-W8A8)
-- `DeepSeek-V3.2-w8a8` (Quantized version): requires **1 Atlas 800 A3 (64G × 16) node** or **2 Atlas 800 A2 (64G × 8) nodes**. [Download model weight](https://www.modelscope.cn/models/vllm-ascend/DeepSeek-V3.2-W8A8/)
+- `DeepSeek-V3.2-Exp`(BF16 version): require 2 Atlas 800 A3 (64G × 16) nodes or 4 Atlas 800 A2 (64G × 8) nodes. [Download model weight](https://modelers.cn/models/Modelers_Park/DeepSeek-V3.2-Exp-BF16)
+- `DeepSeek-V3.2-Exp-W8A8`(Quantized version): require 1 Atlas 800 A3 (64G × 16) node or 2 Atlas 800 A2 (64G × 8) nodes. [Download model weight](https://www.modelscope.cn/models/vllm-ascend/DeepSeek-V3.2-Exp-W8A8)
+- `DeepSeek-V3.2`(BF16 version): require 2 Atlas 800 A3 (64G × 16) nodes or 4 Atlas 800 A2 (64G × 8) nodes. Model weight in BF16 not found now.
+- `DeepSeek-V3.2-w8a8`(Quantized version): require 1 Atlas 800 A3 (64G × 16) node or 2 Atlas 800 A2 (64G × 8) nodes. [Download model weight](https://www.modelscope.cn/models/vllm-ascend/DeepSeek-V3.2-W8A8/)
 
 It is recommended to download the model weight to the shared directory of multiple nodes, such as `/root/.cache/`.
 
@@ -156,6 +158,7 @@ vllm serve /root/.cache/modelscope/hub/models/vllm-ascend/DeepSeek-V3.2-W8A8 \
 --no-enable-prefix-caching \
 --gpu-memory-utilization 0.92 \
 --compilation-config '{"cudagraph_mode": "FULL_DECODE_ONLY"}' \
+--additional-config '{"layer_sharding": ["q_b_proj", "o_proj"]}' \
 --speculative-config '{"num_speculative_tokens": 3, "method": "deepseek_mtp"}'
 
 ```
@@ -217,6 +220,7 @@ vllm serve /root/.cache/modelscope/hub/models/vllm-ascend/DeepSeek-V3.2-W8A8 \
 --no-enable-prefix-caching \
 --gpu-memory-utilization 0.92 \
 --compilation-config '{"cudagraph_mode": "FULL_DECODE_ONLY"}' \
+--additional-config '{"layer_sharding": ["q_b_proj", "o_proj"]}' \
 --speculative-config '{"num_speculative_tokens": 3, "method": "deepseek_mtp"}'
 ```
 
@@ -267,6 +271,7 @@ vllm serve /root/.cache/modelscope/hub/models/vllm-ascend/DeepSeek-V3.2-W8A8 \
 --no-enable-prefix-caching \
 --gpu-memory-utilization 0.92 \
 --compilation-config '{"cudagraph_mode": "FULL_DECODE_ONLY"}' \
+--additional-config '{"layer_sharding": ["q_b_proj", "o_proj"]}' \
 --speculative-config '{"num_speculative_tokens": 3, "method": "deepseek_mtp"}'
 ```
 
@@ -302,6 +307,7 @@ export VLLM_ASCEND_ENABLE_FLASHCOMM1=1
 export HCCL_CONNECT_TIMEOUT=120
 export HCCL_INTRA_PCIE_ENABLE=1
 export HCCL_INTRA_ROCE_ENABLE=0
+export VLLM_ASCEND_ENABLE_FLASHCOMM1=1
 
 vllm serve /root/.cache/modelscope/hub/models/vllm-ascend/DeepSeek-V3.2-W8A8 \
 --host 0.0.0.0 \
@@ -322,6 +328,7 @@ vllm serve /root/.cache/modelscope/hub/models/vllm-ascend/DeepSeek-V3.2-W8A8 \
 --no-enable-prefix-caching \
 --gpu-memory-utilization 0.92 \
 --compilation-config '{"cudagraph_mode": "FULL_DECODE_ONLY", "cudagraph_capture_sizes":[8, 16, 24, 32, 40, 48]}' \
+--additional-config '{"layer_sharding": ["q_b_proj", "o_proj"]}' \
 --speculative-config '{"num_speculative_tokens": 3, "method": "deepseek_mtp"}'
 
 ```
@@ -354,6 +361,7 @@ export VLLM_ASCEND_ENABLE_FLASHCOMM1=1
 export HCCL_CONNECT_TIMEOUT=120
 export HCCL_INTRA_PCIE_ENABLE=1
 export HCCL_INTRA_ROCE_ENABLE=0
+export VLLM_ASCEND_ENABLE_FLASHCOMM1=1
 
 vllm serve /root/.cache/modelscope/hub/models/vllm-ascend/DeepSeek-V3.2-W8A8 \
 --host 0.0.0.0 \
@@ -376,6 +384,7 @@ vllm serve /root/.cache/modelscope/hub/models/vllm-ascend/DeepSeek-V3.2-W8A8 \
 --no-enable-prefix-caching \
 --gpu-memory-utilization 0.92 \
 --compilation-config '{"cudagraph_mode": "FULL_DECODE_ONLY", "cudagraph_capture_sizes":[8, 16, 24, 32, 40, 48]}' \
+--additional-config '{"layer_sharding": ["q_b_proj", "o_proj"]}' \
 --speculative-config '{"num_speculative_tokens": 3, "method": "deepseek_mtp"}'
 
 ```
@@ -517,8 +526,7 @@ Before you start, please
         export ASCEND_TRANSPORT_PRINT=1
         export ACL_OP_INIT_MODE=1
         export ASCEND_A3_ENABLE=1
-        # Timeout (in seconds) for automatically releasing the prefiller’s KV cache for a particular request.
-        export VLLM_MOONCAKE_ABORT_REQUEST_TIMEOUT=480
+        export VLLM_NIXL_ABORT_REQUEST_TIMEOUT=300000
 
         export ASCEND_RT_VISIBLE_DEVICES=$1
 
@@ -540,7 +548,7 @@ Before you start, please
             "torch_profiler_dir": "./vllm_profile",
             "torch_profiler_with_stack": false}' \
             --seed 1024 \
-            --served-model-name deepseek_v3.2 \
+            --served-model-name dsv3 \
             --max-model-len 68000 \
             --max-num-batched-tokens 32560 \
             --trust-remote-code \
@@ -549,11 +557,12 @@ Before you start, please
             --quantization ascend \
             --enforce-eager \
             --no-enable-prefix-caching \
-            --additional-config '{"layer_sharding": ["q_b_proj", "o_proj"], "enable_dsa_cp": true}' \
+            --additional-config '{"layer_sharding": ["q_b_proj", "o_proj"]}' \
             --kv-transfer-config \
             '{"kv_connector": "MooncakeLayerwiseConnector",
             "kv_role": "kv_producer",
             "kv_port": "30000",
+            "engine_id": "0",
             "kv_connector_extra_config": {
                         "prefill": {
                                 "dp_size": 2,
@@ -591,8 +600,7 @@ Before you start, please
         export ASCEND_TRANSPORT_PRINT=1
         export ACL_OP_INIT_MODE=1
         export ASCEND_A3_ENABLE=1
-        # Timeout (in seconds) for automatically releasing the prefiller’s KV cache for a particular request.
-        export VLLM_MOONCAKE_ABORT_REQUEST_TIMEOUT=480
+        export VLLM_NIXL_ABORT_REQUEST_TIMEOUT=300000
 
         export ASCEND_RT_VISIBLE_DEVICES=$1
 
@@ -614,7 +622,7 @@ Before you start, please
             "torch_profiler_dir": "./vllm_profile",
             "torch_profiler_with_stack": false}' \
             --seed 1024 \
-            --served-model-name deepseek_v3.2 \
+            --served-model-name dsv3 \
             --max-model-len 68000 \
             --max-num-batched-tokens 32560 \
             --trust-remote-code \
@@ -623,11 +631,12 @@ Before you start, please
             --quantization ascend \
             --enforce-eager \
             --no-enable-prefix-caching \
-            --additional-config '{"layer_sharding": ["q_b_proj", "o_proj"], "enable_dsa_cp": true}' \
+            --additional-config '{"layer_sharding": ["q_b_proj", "o_proj"]}' \
             --kv-transfer-config \
             '{"kv_connector": "MooncakeLayerwiseConnector",
             "kv_role": "kv_producer",
             "kv_port": "30000",
+            "engine_id": "0",
             "kv_connector_extra_config": {
                         "prefill": {
                                 "dp_size": 2,
@@ -667,8 +676,7 @@ Before you start, please
         export ASCEND_TRANSPORT_PRINT=1
         export ACL_OP_INIT_MODE=1
         export ASCEND_A3_ENABLE=1
-        # Timeout (in seconds) for automatically releasing the prefiller’s KV cache for a particular request.
-        export VLLM_MOONCAKE_ABORT_REQUEST_TIMEOUT=480
+        export VLLM_NIXL_ABORT_REQUEST_TIMEOUT=300000
 
         export TASK_QUEUE_ENABLE=1
 
@@ -690,7 +698,7 @@ Before you start, please
             "torch_profiler_dir": "./vllm_profile",
             "torch_profiler_with_stack": false}' \
             --seed 1024 \
-            --served-model-name deepseek_v3.2 \
+            --served-model-name dsv3 \
             --max-model-len 68000 \
             --max-num-batched-tokens 12 \
             --compilation-config '{"cudagraph_mode":"FULL_DECODE_ONLY", "cudagraph_capture_sizes":[3, 6, 9, 12]}' \
@@ -698,11 +706,13 @@ Before you start, please
             --max-num-seqs 4 \
             --gpu-memory-utilization 0.95 \
             --no-enable-prefix-caching \
+            --async-scheduling \
             --quantization ascend \
             --kv-transfer-config \
             '{"kv_connector": "MooncakeLayerwiseConnector",
             "kv_role": "kv_consumer",
             "kv_port": "30100",
+            "engine_id": "1",
             "kv_connector_extra_config": {
                         "prefill": {
                                 "dp_size": 2,
@@ -742,8 +752,7 @@ Before you start, please
         export ASCEND_TRANSPORT_PRINT=1
         export ACL_OP_INIT_MODE=1
         export ASCEND_A3_ENABLE=1
-        # Timeout (in seconds) for automatically releasing the prefiller’s KV cache for a particular request.
-        export VLLM_MOONCAKE_ABORT_REQUEST_TIMEOUT=480
+        export VLLM_NIXL_ABORT_REQUEST_TIMEOUT=300000
 
         export TASK_QUEUE_ENABLE=1
 
@@ -765,11 +774,12 @@ Before you start, please
             "torch_profiler_dir": "./vllm_profile",
             "torch_profiler_with_stack": false}' \
             --seed 1024 \
-            --served-model-name deepseek_v3.2 \
+            --served-model-name dsv3 \
             --max-model-len 68000 \
             --max-num-batched-tokens 12 \
             --compilation-config '{"cudagraph_mode":"FULL_DECODE_ONLY",  "cudagraph_capture_sizes":[3, 6, 9, 12]}' \
             --trust-remote-code \
+            --async-scheduling \
             --max-num-seqs 4 \
             --gpu-memory-utilization 0.95 \
             --no-enable-prefix-caching \
@@ -778,6 +788,7 @@ Before you start, please
             '{"kv_connector": "MooncakeLayerwiseConnector",
             "kv_role": "kv_consumer",
             "kv_port": "30100",
+            "engine_id": "1",
             "kv_connector_extra_config": {
                         "prefill": {
                                 "dp_size": 2,
@@ -797,31 +808,31 @@ Refer to [Distributed DP Server With Large-Scale Expert Parallelism](https://doc
 
 1. Prefill node 0
 
-    ```shell
-    # change ip to your own
-    python launch_online_dp.py --dp-size 2 --tp-size 16 --dp-size-local 1 --dp-rank-start 0 --dp-address 141.61.39.105 --dp-rpc-port 12890 --vllm-start-port 9100
-    ```
+```shell
+# change ip to your own
+python launch_online_dp.py --dp-size 2 --tp-size 16 --dp-size-local 1 --dp-rank-start 0 --dp-address 141.61.39.105 --dp-rpc-port 12890 --vllm-start-port 9100
+```
 
 2. Prefill node 1
 
-    ```shell
-    # change ip to your own
-    python launch_online_dp.py --dp-size 2 --tp-size 16 --dp-size-local 1 --dp-rank-start 1 --dp-address 141.61.39.105 --dp-rpc-port 12890 --vllm-start-port 9100
-    ```
+```shell
+# change ip to your own
+python launch_online_dp.py --dp-size 2 --tp-size 16 --dp-size-local 1 --dp-rank-start 1 --dp-address 141.61.39.105 --dp-rpc-port 12890 --vllm-start-port 9100
+```
 
 3. Decode node 0
 
-    ```shell
-    # change ip to your own
-    python launch_online_dp.py --dp-size 8 --tp-size 4 --dp-size-local 4 --dp-rank-start 0 --dp-address 141.61.39.117 --dp-rpc-port 12777 --vllm-start-port 9100
-    ```
+```shell
+# change ip to your own
+python launch_online_dp.py --dp-size 8 --tp-size 4 --dp-size-local 4 --dp-rank-start 0 --dp-address 141.61.39.117 --dp-rpc-port 12777 --vllm-start-port 9100
+```
 
 4. Decode node 1
 
-    ```shell
-    # change ip to your own
-    python launch_online_dp.py --dp-size 8 --tp-size 4 --dp-size-local 4 --dp-rank-start 4 --dp-address 141.61.39.117 --dp-rpc-port 12777 --vllm-start-port 9100
-    ```
+```shell
+# change ip to your own
+python launch_online_dp.py --dp-size 8 --tp-size 4 --dp-size-local 4 --dp-rank-start 4 --dp-address 141.61.39.117 --dp-rpc-port 12777 --vllm-start-port 9100
+```
 
 ### Request Forwarding
 
@@ -858,11 +869,6 @@ python load_balance_proxy_layerwise_server_example.py \
 
 Once your server is started, you can query the model with input prompts:
 
-**Note**:
-
-- `<node0_ip>`: The IP address of the node where the server is running (e.g., localhost). For PD-separated deployment, use the host IP of the node where the proxy script resides.
-- `<port>`: The port number specified in the server startup command (e.g., 8000). For PD-separated deployment, use the port configured in the proxy script.
-
 ```shell
 curl http://<node0_ip>:<port>/v1/completions \
     -H "Content-Type: application/json" \
@@ -872,12 +878,6 @@ curl http://<node0_ip>:<port>/v1/completions \
         "max_completion_tokens": 50,
         "temperature": 0
     }'
-```
-
-**Expected Result**:
-
-```json
-{"id":"019eab54ead036b23e53f3a709e09289","object":"chat.completion","created":1780990929,"model":"deepseek_v3.2","choices":[{"index":0,"message":{"role":"assistant","content":"The future of AI is **not a single destination, but a complex, multi-faceted trajectory** that will reshape nearly every aspect of human society, technology, and our understanding of intelligence itself. It can be understood through several interconnected lenses:\n\n### "},"finish_reason":"length"}],"usage":{"prompt_tokens":9,"completion_tokens":50,"total_tokens":59,"completion_tokens_details":{"reasoning_tokens":0},"prompt_tokens_details":{"cached_tokens":0},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":9},"system_fingerprint":""}
 ```
 
 ## Accuracy Evaluation
@@ -898,13 +898,13 @@ As an example, take the `gsm8k` dataset as a test dataset, and run accuracy eval
 
 2. Run `lm_eval` to execute the accuracy evaluation.
 
-    ```shell
-    lm_eval \
-    --model local-completions \
-    --model_args model=/root/.cache/Eco-Tech/DeepSeek-V3.2-w8a8-mtp-QuaRot,base_url=http://127.0.0.1:8000/v1/completions,tokenized_requests=False,trust_remote_code=True \
-    --tasks gsm8k \
-    --output_path ./
-    ```
+```shell
+lm_eval \
+  --model local-completions \
+  --model_args model=/root/.cache/Eco-Tech/DeepSeek-V3.2-w8a8-mtp-QuaRot,base_url=http://127.0.0.1:8000/v1/completions,tokenized_requests=False,trust_remote_code=True \
+  --tasks gsm8k \
+  --output_path ./
+```
 
 3. After execution, you can get the result.
 
@@ -928,7 +928,7 @@ The performance result is:
 
 Run performance evaluation of `DeepSeek-V3.2-W8A8` as an example.
 
-Refer to [vllm benchmark](https://docs.vllm.ai/en/latest/benchmarking/) for more details.
+Refer to [vllm benchmark](https://docs.vllm.ai/en/latest/contributing/benchmarks.html) for more details.
 
 There are three `vllm bench` subcommands:
 
@@ -939,7 +939,7 @@ There are three `vllm bench` subcommands:
 Take the `serve` as an example. Run the code as follows.
 
 ```shell
-export VLLM_USE_MODELSCOPE=True
+export VLLM_USE_MODELSCOPE=true
 vllm bench serve --model /root/.cache/Eco-Tech/DeepSeek-V3.2-w8a8-mtp-QuaRot  --dataset-name random --random-input 200 --num-prompts 200 --request-rate 1 --save-result --result-dir ./
 ```
 
