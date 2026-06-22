@@ -1,0 +1,79 @@
+diff --git a/vllm/v1/worker/gpu_model_runner.py b/vllm/v1/worker/gpu_model_runner.py
+index 2e62206..ee889dd 100644
+--- a/vllm/v1/worker/gpu_model_runner.py
++++ b/vllm/v1/worker/gpu_model_runner.py
+@@ -8,7 +8,7 @@ import threading
+ import time
+ from collections import defaultdict
+ from collections.abc import Callable, Iterable, Iterator, Sequence
+-from contextlib import contextmanager
++from contextlib import contextmanager, nullcontext
+ from copy import copy, deepcopy
+ from dataclasses import dataclass, replace
+ from functools import reduce
+@@ -5767,9 +5767,62 @@ class GPUModelRunner(
+                         )
+ 
+                         # Run multimodal encoder.
+-                        dummy_encoder_outputs = self.model.embed_multimodal(
+-                            **batched_dummy_mm_inputs
+-                        )
++                        tower_lora_context = nullcontext()
++                        connector_lora_context = nullcontext()
++                        if (
++                            self.lora_config is not None
++                            and hasattr(self, "lora_manager")
++                            and self.lora_manager.supports_tower_connector_lora()
++                        ):
++                            tower_token_counts = []
++                            for key in (
++                                "pixel_values_videos",
++                                "pixel_values_images",
++                                "pixel_values",
++                            ):
++                                value = batched_dummy_mm_inputs.get(key)
++                                if value is None:
++                                    continue
++                                if hasattr(value, "shape") and len(value.shape) >= 2:
++                                    tower_token_counts.append(int(value.shape[0]))
++                                elif isinstance(value, (list, tuple)):
++                                    for item in value:
++                                        if hasattr(item, "shape") and len(item.shape) >= 2:
++                                            tower_token_counts.append(int(item.shape[0]))
++
++                            connector_token_counts = []
++                            if tower_token_counts and hasattr(
++                                self.model, "get_num_mm_connector_tokens"
++                            ):
++                                connector_token_counts = [
++                                    self.model.get_num_mm_connector_tokens(num_tokens)
++                                    for num_tokens in tower_token_counts
++                                ]
++
++                            if tower_token_counts:
++                                tower_lora_context = self.maybe_dummy_run_with_lora(
++                                    self.lora_config,
++                                    np.array(tower_token_counts, dtype=np.int32),
++                                    np.ones(len(tower_token_counts), dtype=np.int32),
++                                    remove_lora=False,
++                                    num_active_loras=self.lora_config.max_loras,
++                                    mapping_type=LoRAMappingType.TOWER,
++                                )
++
++                            if connector_token_counts:
++                                connector_lora_context = self.maybe_dummy_run_with_lora(
++                                    self.lora_config,
++                                    np.array(connector_token_counts, dtype=np.int32),
++                                    np.ones(len(connector_token_counts), dtype=np.int32),
++                                    remove_lora=True,
++                                    num_active_loras=self.lora_config.max_loras,
++                                    mapping_type=LoRAMappingType.CONNECTOR,
++                                )
++
++                        with tower_lora_context, connector_lora_context:
++                            dummy_encoder_outputs = self.model.embed_multimodal(
++                                **batched_dummy_mm_inputs
++                            )
+ 
+                         sanity_check_mm_encoder_outputs(
+                             dummy_encoder_outputs,
